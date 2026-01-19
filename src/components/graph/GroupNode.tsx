@@ -1,14 +1,13 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Folder, FolderOpen, ChevronRight, ChevronDown } from 'lucide-react';
+import { Layers, ChevronRight, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import type { FolderData } from '@/data/mockGraphData';
+import type { GroupData } from '@/data/mockGraphData';
 
-interface FolderNodeProps {
+interface GroupNodeProps {
   data: { 
-    folder: FolderData;
-    onToggleExpand?: (folderId: string) => void;
-    isExpanded?: boolean;
+    group: GroupData;
+    onToggleExpand?: (groupId: string) => void;
     isFaded?: boolean;
     isPromptSelected?: boolean;
   };
@@ -22,25 +21,27 @@ const roleColors: Record<string, string> = {
   tests: 'bg-badge-tests/20 text-badge-tests border-badge-tests/30',
   config: 'bg-badge-config/20 text-badge-config border-badge-config/30',
   core: 'bg-node-folder/20 text-node-folder border-node-folder/30',
+  state: 'bg-badge-utils/20 text-badge-utils border-badge-utils/30',
+  auth: 'bg-badge-api/20 text-badge-api border-badge-api/30',
 };
 
-const FolderNode = memo(({ data, selected }: FolderNodeProps) => {
-  const { folder, onToggleExpand, isExpanded: expandedProp, isFaded, isPromptSelected } = data;
-  const isExpanded = expandedProp ?? folder.isExpanded;
+const GroupNode = memo(({ data, selected }: GroupNodeProps) => {
+  const { group, onToggleExpand, isFaded, isPromptSelected } = data;
   
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    onToggleExpand?.(folder.id);
+    onToggleExpand?.(group.id);
   };
   
   return (
     <div
       className={`
-        relative px-3 py-2.5 min-w-[180px] rounded-lg
-        bg-card border transition-all duration-200
+        relative px-4 py-3 min-w-[180px] rounded-lg
+        bg-gradient-to-br from-card to-muted/50 border-2 border-dashed
+        transition-all duration-200
         ${selected 
-          ? 'border-node-folder node-glow-folder scale-105' 
-          : 'border-border hover:border-node-folder/50'
+          ? 'border-badge-ui scale-105' 
+          : 'border-border hover:border-badge-ui/50'
         }
         ${isFaded ? 'opacity-20' : 'opacity-100'}
         ${isPromptSelected ? 'ring-2 ring-node-repository ring-offset-2 ring-offset-background' : ''}
@@ -50,7 +51,7 @@ const FolderNode = memo(({ data, selected }: FolderNodeProps) => {
       <Handle
         type="target"
         position={Position.Top}
-        className="!w-2.5 !h-2.5 !bg-node-folder !border-2 !border-card"
+        className="!w-2.5 !h-2.5 !bg-badge-ui !border-2 !border-card"
       />
       
       {/* Header */}
@@ -59,43 +60,44 @@ const FolderNode = memo(({ data, selected }: FolderNodeProps) => {
           onClick={handleToggle}
           className="p-0.5 rounded hover:bg-accent transition-colors"
         >
-          {isExpanded ? (
+          {group.isExpanded ? (
             <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
           ) : (
             <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
           )}
         </button>
-        {isExpanded ? (
-          <FolderOpen className="w-4 h-4 text-node-folder" />
-        ) : (
-          <Folder className="w-4 h-4 text-node-folder" />
-        )}
-        <span className="font-medium text-sm text-foreground">{folder.name}</span>
+        <Layers className="w-4 h-4 text-badge-ui" />
+        <span className="font-medium text-sm text-foreground">{group.name}</span>
       </div>
       
-      {/* Path & Role */}
-      <div className="mt-1.5 ml-7 flex items-center gap-2">
-        <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">
-          {folder.path}
-        </span>
+      {/* Meta info */}
+      <div className="mt-2 ml-7 flex items-center gap-2">
         <Badge 
           variant="outline" 
-          className={`text-[10px] px-1.5 py-0 h-4 ${roleColors[folder.role] || roleColors.core}`}
+          className={`text-[10px] px-1.5 py-0 h-4 ${roleColors[group.role] || roleColors.core}`}
         >
-          {folder.role}
+          {group.role}
         </Badge>
+        <span className="text-[10px] text-muted-foreground">
+          Click to expand
+        </span>
+      </div>
+      
+      {/* Count indicator */}
+      <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-badge-ui text-background text-xs font-bold flex items-center justify-center">
+        {group.count}
       </div>
       
       {/* Output handle */}
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!w-2.5 !h-2.5 !bg-node-folder !border-2 !border-card"
+        className="!w-2.5 !h-2.5 !bg-badge-ui !border-2 !border-card"
       />
     </div>
   );
 });
 
-FolderNode.displayName = 'FolderNode';
+GroupNode.displayName = 'GroupNode';
 
-export default FolderNode;
+export default GroupNode;
