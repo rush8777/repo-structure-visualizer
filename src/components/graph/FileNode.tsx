@@ -5,7 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import type { FileData } from '@/data/mockGraphData';
 
 interface FileNodeProps {
-  data: { file: FileData };
+  data: { 
+    file: FileData;
+    isFaded?: boolean;
+    isPromptSelected?: boolean;
+    isHotspot?: boolean;
+  };
   selected?: boolean;
 }
 
@@ -29,7 +34,7 @@ const extensionColors: Record<string, string> = {
 };
 
 const FileNode = memo(({ data, selected }: FileNodeProps) => {
-  const { file } = data;
+  const { file, isFaded, isPromptSelected, isHotspot } = data;
   const IconComponent = extensionIcons[file.extension] || File;
   const extColor = extensionColors[file.extension] || 'bg-muted text-muted-foreground border-border';
   
@@ -42,6 +47,9 @@ const FileNode = memo(({ data, selected }: FileNodeProps) => {
           ? 'border-node-file node-glow-file scale-105' 
           : 'border-border hover:border-node-file/50'
         }
+        ${isFaded ? 'opacity-20' : 'opacity-100'}
+        ${isPromptSelected ? 'ring-2 ring-node-repository ring-offset-2 ring-offset-background' : ''}
+        ${isHotspot ? 'border-l-2 border-l-destructive' : ''}
       `}
     >
       {/* Input handle */}

@@ -1,0 +1,417 @@
+import { useState, useCallback, useMemo } from 'react';
+import type { Node, Edge } from '@xyflow/react';
+import { 
+  mockGraphData, 
+  type ViewMode, 
+  type RepositoryData, 
+  type FolderData, 
+  type FileData,
+  type GroupData,
+  getFileImports,
+  getFileImportedBy,
+} from '@/data/mockGraphData';
+
+// Stable layout positions - same repo = same layout every render
+const LAYOUT = {
+  REPO_Y: 0,
+  FOLDER_L1_Y: 160,
+  FOLDER_L2_Y: 320,
+  FILE_Y: 480,
+  SPACING_X: 220,
+  GROUP_OFFSET_Y: 20,
+};
+
+interface GraphState {
+  viewMode: ViewMode;
+  expandedFolders: Set<string>;
+  expandedGroups: Set<string>;
+  selectedNodeId: string | null;
+  searchQuery: string;
+  promptSelectedIds: Set<string>;
+}
+
+export const useGraphState = () => {
+  const [state, setState] = useState<GraphState>({
+    viewMode: 'structure',
+    expandedFolders: new Set(['folder-src', 'folder-components']),
+    expandedGroups: new Set(),
+    selectedNodeId: null,
+    searchQuery: '',
+    promptSelectedIds: new Set(),
+  });
+
+  // Actions
+  const setViewMode = useCallback((mode: ViewMode) => {
+    setState(prev => ({ ...prev, viewMode: mode }));
+  }, []);
+
+  const toggleFolder = useCallback((folderId: string) => {
+    setState(prev => {
+      const newExpanded = new Set(prev.expandedFolders);
+      if (newExpanded.has(folderId)) {
+        newExpanded.delete(folderId);
+      } else {
+        newExpanded.add(folderId);
+      }
+      return { ...prev, expandedFolders: newExpanded };
+    });
+  }, []);
+
+  const toggleGroup = useCallback((groupId: string) => {
+    setState(prev => {
+      const newExpanded = new Set(prev.expandedGroups);
+      if (newExpanded.has(groupId)) {
+        newExpanded.delete(groupId);
+      } else {
+        newExpanded.add(groupId);
+      }
+      return { ...prev, expandedGroups: newExpanded };
+    });
+  }, []);
+
+  const selectNode = useCallback((nodeId: string | null) => {
+    setState(prev => ({ ...prev, selectedNodeId: nodeId }));
+  }, []);
+
+  const setSearchQuery = useCallback((query: string) => {
+    setState(prev => ({ ...prev, searchQuery: query }));
+  }, []);
+
+  const togglePromptSelection = useCallback((nodeId: string) => {
+    setState(prev => {
+      const newSelected = new Set(prev.promptSelectedIds);
+      if (newSelected.has(nodeId)) {
+        newSelected.delete(nodeId);
+      } else {
+        newSelected.add(nodeId);
+      }
+      return { ...prev, promptSelectedIds: newSelected };
+    });
+  }, []);
+
+  const clearPromptSelection = useCallback(() => {
+    setState(prev => ({ ...prev, promptSelectedIds: new Set() }));
+  }, []);
+
+  // Computed: which files should be visible based on folder expansion
+  const visibleFileIds = useMemo(() => {
+    const visible = new Set<string>();
+    
+    mockGraphData.files.forEach(file => {
+      // Check if parent folder chain is expanded
+      let parentId = file.parentId;
+      let isVisible = true;
+      
+      while (parentId && parentId !== 'repo-1') {
+        if (!state.expandedFolders.has(parentId)) {
+          isVisible = false;
+          break;
+        }
+        const parent = mockGraphData.folders.find(f => f.id === parentId);
+        parentId = parent?.parentId || '';
+      }
+      
+      if (isVisible) {
+        visible.add(file.id);
+      }
+    });
+    
+    return visible;
+  }, [state.expandedFolders]);
+
+  // Computed: related nodes for dependency highlighting
+  const relatedNodeIds = useMemo(() => {
+    if (!state.selectedNodeId || state.viewMode !== 'dependencies') {
+      return new Set<string>();
+    }
+    
+    const related = new Set<string>();
+    related.add(state.selectedNodeId);
+    
+    // Files this node imports
+    getFileImports(state.selectedNodeId).forEach(id => related.add(id));
+    
+    // Files that import this node
+    getFileImportedBy(state.selectedNodeId).forEach(id => related.add(id));
+    
+    return related;
+  }, [state.selectedNodeId, state.viewMode]);
+
+  // Computed: search matches
+  const searchMatchIds = useMemo(() => {
+    if (!state.searchQuery.trim()) {
+      return null; // null means no filtering
+    }
+    
+    const query = state.searchQuery.toLowerCase();
+    const matches = new Set<string>();
+    
+    mockGraphData.folders.forEach(f => {
+      if (f.name.toLowerCase().includes(query) || f.path.toLowerCase().includes(query)) {
+        matches.add(f.id);
+      }
+    });
+    
+    mockGraphData.files.forEach(f => {
+      if (f.name.toLowerCase().includes(query) || f.responsibility.toLowerCase().includes(query)) {
+        matches.add(f.id);
+      }
+    });
+    
+    mockGraphData.groups.forEach(g => {
+      if (g.name.toLowerCase().includes(query)) {
+        matches.add(g.id);
+      }
+    });
+    
+    return matches;
+  }, [state.searchQuery]);
+
+  // Generate nodes based on current state
+  const generateNodes = useCallback((): Node[] => {
+    const nodes: Node[] = [];
+    const positionMap = new Map<string, { x: number; y: number }>();
+    
+    // Repository node (always visible)
+    const repoX = 500;
+    nodes.push({
+      id: mockGraphData.repository.id,
+      type: 'repository',
+      position: { x: repoX, y: LAYOUT.REPO_Y },
+      data: { 
+        repository: mockGraphData.repository,
+        isFaded: state.searchQuery && !searchMatchIds?.has(mockGraphData.repository.id),
+      },
+    });
+    positionMap.set(mockGraphData.repository.id, { x: repoX, y: LAYOUT.REPO_Y });
+    
+    // Root folders (L1)
+    const rootFolders = mockGraphData.folders.filter(f => f.parentId === 'repo-1');
+    const l1StartX = repoX - ((rootFolders.length - 1) * LAYOUT.SPACING_X) / 2;
+    
+    rootFolders.forEach((folder, idx) => {
+      const x = l1StartX + idx * LAYOUT.SPACING_X;
+      const y = LAYOUT.FOLDER_L1_Y;
+      positionMap.set(folder.id, { x, y });
+      
+      const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
+        (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
+      
+      nodes.push({
+        id: folder.id,
+        type: 'folder',
+        position: { x, y },
+        data: { 
+          folder,
+          isExpanded: state.expandedFolders.has(folder.id),
+          onToggleExpand: toggleFolder,
+          isFaded,
+          isPromptSelected: state.promptSelectedIds.has(folder.id),
+        },
+      });
+    });
+    
+    // L2 folders (children of expanded L1 folders)
+    let l2Index = 0;
+    mockGraphData.folders
+      .filter(f => rootFolders.some(rf => rf.id === f.parentId))
+      .filter(f => state.expandedFolders.has(f.parentId))
+      .forEach((folder) => {
+        const parentPos = positionMap.get(folder.parentId);
+        const x = 100 + l2Index * LAYOUT.SPACING_X;
+        const y = LAYOUT.FOLDER_L2_Y;
+        positionMap.set(folder.id, { x, y });
+        l2Index++;
+        
+        const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
+          (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
+        
+        // Check if this folder should show a group node instead
+        const group = mockGraphData.groups.find(g => g.parentId === folder.id);
+        const shouldShowGroup = group && !state.expandedGroups.has(group.id) && 
+          (folder.fileCount || 0) >= 10;
+        
+        nodes.push({
+          id: folder.id,
+          type: 'folder',
+          position: { x, y },
+          data: { 
+            folder,
+            isExpanded: state.expandedFolders.has(folder.id),
+            onToggleExpand: toggleFolder,
+            isFaded,
+            isPromptSelected: state.promptSelectedIds.has(folder.id),
+            hasGroup: shouldShowGroup,
+          },
+        });
+      });
+    
+    // L3 folders (children of expanded L2 folders)
+    let l3Index = 0;
+    mockGraphData.folders
+      .filter(f => {
+        const parent = mockGraphData.folders.find(pf => pf.id === f.parentId);
+        return parent && rootFolders.some(rf => rf.id === parent.parentId);
+      })
+      .filter(f => state.expandedFolders.has(f.parentId))
+      .forEach((folder) => {
+        const x = 50 + l3Index * 200;
+        const y = LAYOUT.FILE_Y - 80;
+        positionMap.set(folder.id, { x, y });
+        l3Index++;
+        
+        const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
+          (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
+        
+        nodes.push({
+          id: folder.id,
+          type: 'folder',
+          position: { x, y },
+          data: { 
+            folder,
+            isExpanded: state.expandedFolders.has(folder.id),
+            onToggleExpand: toggleFolder,
+            isFaded,
+            isPromptSelected: state.promptSelectedIds.has(folder.id),
+          },
+        });
+      });
+    
+    // Group nodes (aggregated files)
+    mockGraphData.groups.forEach((group) => {
+      const parentPos = positionMap.get(group.parentId);
+      if (!parentPos) return;
+      if (state.expandedGroups.has(group.id)) return; // Don't show if expanded
+      if (!state.expandedFolders.has(group.parentId)) return; // Parent must be expanded
+      
+      const isFaded = (state.searchQuery && !searchMatchIds?.has(group.id)) ||
+        (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(group.id));
+      
+      nodes.push({
+        id: group.id,
+        type: 'group',
+        position: { x: parentPos.x, y: parentPos.y + 120 },
+        data: {
+          group,
+          onToggleExpand: toggleGroup,
+          isFaded,
+          isPromptSelected: state.promptSelectedIds.has(group.id),
+        },
+      });
+    });
+    
+    // Files (only if visible and not in a collapsed group)
+    if (state.viewMode !== 'structure' || state.expandedFolders.size > 0) {
+      let fileIndex = 0;
+      mockGraphData.files
+        .filter(f => visibleFileIds.has(f.id))
+        .filter(f => {
+          // Check if file is in a collapsed group
+          const group = mockGraphData.groups.find(g => g.childIds.includes(f.id));
+          if (group && !state.expandedGroups.has(group.id)) {
+            return false;
+          }
+          return true;
+        })
+        .filter(f => {
+          // In risk mode, only show hotspots
+          if (state.viewMode === 'risk') {
+            return f.isHotspot;
+          }
+          return true;
+        })
+        .forEach((file) => {
+          const parentPos = positionMap.get(file.parentId);
+          const baseX = parentPos ? parentPos.x : 100 + fileIndex * 200;
+          const baseY = LAYOUT.FILE_Y + (fileIndex % 3) * 100;
+          
+          const isFaded = (state.searchQuery && !searchMatchIds?.has(file.id)) ||
+            (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(file.id));
+          
+          nodes.push({
+            id: file.id,
+            type: 'file',
+            position: { x: baseX + (fileIndex % 4) * 60 - 60, y: baseY },
+            data: { 
+              file,
+              isFaded,
+              isPromptSelected: state.promptSelectedIds.has(file.id),
+              isHotspot: file.isHotspot,
+            },
+          });
+          
+          fileIndex++;
+        });
+    }
+    
+    return nodes;
+  }, [state, visibleFileIds, searchMatchIds, relatedNodeIds, toggleFolder, toggleGroup]);
+
+  // Generate edges based on current state
+  const generateEdges = useCallback((): Edge[] => {
+    const edges: Edge[] = [];
+    const visibleNodeIds = new Set(generateNodes().map(n => n.id));
+    
+    mockGraphData.edges.forEach((edge) => {
+      // Only show edges between visible nodes
+      if (!visibleNodeIds.has(edge.source) || !visibleNodeIds.has(edge.target)) {
+        return;
+      }
+      
+      // In structure mode, only show CONTAINS edges
+      if (state.viewMode === 'structure' && edge.label === 'IMPORTS') {
+        return;
+      }
+      
+      // In dependencies mode, only show edges for selected node
+      if (state.viewMode === 'dependencies' && edge.label === 'IMPORTS') {
+        if (!state.selectedNodeId) return;
+        if (edge.source !== state.selectedNodeId && edge.target !== state.selectedNodeId) {
+          return;
+        }
+      }
+      
+      const isHighlighted = state.selectedNodeId && 
+        (edge.source === state.selectedNodeId || edge.target === state.selectedNodeId);
+      
+      edges.push({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: 'custom',
+        data: { 
+          label: edge.label,
+          isHighlighted,
+          weight: edge.weight || 1,
+        },
+      });
+    });
+    
+    // Limit to 15 IMPORT edges max
+    const containsEdges = edges.filter(e => e.data?.label === 'CONTAINS');
+    const importEdges = edges.filter(e => e.data?.label === 'IMPORTS').slice(0, 15);
+    
+    return [...containsEdges, ...importEdges];
+  }, [state, generateNodes]);
+
+  return {
+    state,
+    nodes: generateNodes(),
+    edges: generateEdges(),
+    actions: {
+      setViewMode,
+      toggleFolder,
+      toggleGroup,
+      selectNode,
+      setSearchQuery,
+      togglePromptSelection,
+      clearPromptSelection,
+    },
+    computed: {
+      visibleFileIds,
+      relatedNodeIds,
+      searchMatchIds,
+      searchResultCount: searchMatchIds?.size ?? null,
+    },
+  };
+};
