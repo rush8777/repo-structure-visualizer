@@ -226,12 +226,9 @@ const [state, setState] = useState<GraphState>({
       .filter(f => state.expandedFolders.has(f.parentId))
       .forEach((folder) => {
         const parentPos = positionMap.get(folder.parentId);
-        const defaultX = 100 + l2Index * LAYOUT.SPACING_X;
-        const defaultY = LAYOUT.FOLDER_L2_Y;
-        const x = parentPos?.x ?? defaultX;
-        const y = parentPos?.y ?? defaultY;
-        
-        positionMap.set(folder.id, { x: defaultX, y: defaultY });
+        const x = 100 + l2Index * LAYOUT.SPACING_X;
+        const y = LAYOUT.FOLDER_L2_Y;
+        positionMap.set(folder.id, { x, y });
         l2Index++;
         
         const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
@@ -265,12 +262,9 @@ const [state, setState] = useState<GraphState>({
       .filter(f => state.expandedFolders.has(f.parentId))
       .forEach((folder) => {
         const parentPos = positionMap.get(folder.parentId);
-        const defaultX = parentPos ? parentPos.x - 100 + l3Index * LAYOUT.SPACING_X : 100 + l3Index * LAYOUT.SPACING_X;
-        const defaultY = LAYOUT.FOLDER_L3_Y;
-        const x = parentPos?.x ?? defaultX;
-        const y = parentPos?.y ?? defaultY;
-
-        positionMap.set(folder.id, { x: defaultX, y: defaultY });
+        const x = parentPos ? parentPos.x - 100 + l3Index * LAYOUT.SPACING_X : 100 + l3Index * LAYOUT.SPACING_X;
+        const y = LAYOUT.FOLDER_L3_Y;
+        positionMap.set(folder.id, { x, y });
         l3Index++;
         
         const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
@@ -303,7 +297,7 @@ const [state, setState] = useState<GraphState>({
       nodes.push({
         id: group.id,
         type: 'group',
-        position: { x: parentPos.x, y: parentPos.y },
+        position: { x: parentPos.x, y: parentPos.y + LAYOUT.GROUP_OFFSET_Y },
         data: {
           group,
           onToggleExpand: toggleGroup,
@@ -353,10 +347,8 @@ const [state, setState] = useState<GraphState>({
         files.forEach((file, idx) => {
           const col = idx % cols;
           const row = Math.floor(idx / cols);
-          const defaultX = baseX + (col - (cols - 1) / 2) * colWidth;
-          const defaultY = baseY + row * rowHeight;
-          const x = parentPos?.x ?? defaultX;
-          const y = parentPos?.y ?? defaultY;
+          const x = baseX + (col - (cols - 1) / 2) * colWidth;
+          const y = baseY + row * rowHeight;
           
           const isFaded = (state.searchQuery && !searchMatchIds?.has(file.id)) ||
             (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(file.id));
