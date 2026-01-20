@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { EdgeProps, getBezierPath, EdgeLabelRenderer } from '@xyflow/react';
+import { EdgeProps, getBezierPath } from '@xyflow/react';
 
 interface CustomEdgeData {
   label: 'CONTAINS' | 'IMPORTS';
@@ -49,21 +49,7 @@ const CustomEdge = memo(({
           filter: isHighlighted ? `drop-shadow(0 0 4px ${edgeColor})` : undefined,
         }}
       />
-      <EdgeLabelRenderer>
-        <div
-          className={`
-            absolute text-[9px] font-medium px-1.5 py-0.5 rounded
-            pointer-events-none transition-opacity duration-200
-            ${isHighlighted ? 'opacity-100' : 'opacity-0'}
-            ${isImport ? 'bg-edge-imports/20 text-edge-imports' : 'bg-edge-active/20 text-edge-active'}
-          `}
-          style={{
-            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
-          }}
-        >
-          {data?.label}
-        </div>
-      </EdgeLabelRenderer>
+      {/* Labels removed for cleaner look */}
     </>
   );
 });
