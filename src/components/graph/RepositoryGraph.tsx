@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import {
   ReactFlow,
   Background,
@@ -66,11 +66,17 @@ const RepositoryGraphInner = () => {
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { zoomIn, zoomOut, fitView, setViewport } = useReactFlow();
 
-  // Sync nodes/edges when graph state changes
-  useState(() => {
-    setNodes(graphNodes);
+  // Sync nodes/edges when graph state changes (but preserve user-moved positions)
+  useEffect(() => {
+    setNodes((currentNodes) => {
+      const positionMap = new Map(currentNodes.map(n => [n.id, n.position]));
+      return graphNodes.map(node => ({
+        ...node,
+        position: positionMap.get(node.id) ?? node.position,
+      }));
+    });
     setEdges(graphEdges);
-  });
+  }, [graphNodes, graphEdges, setNodes, setEdges]);
 
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
     const nodeData = node.data as Record<string, unknown>;
@@ -155,8 +161,8 @@ const RepositoryGraphInner = () => {
       </div>
       
       <ReactFlow
-        nodes={graphNodes}
-        edges={graphEdges}
+        nodes={nodes}
+        edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodeClick={handleNodeClick}
