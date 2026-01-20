@@ -98,26 +98,32 @@ const [state, setState] = useState<GraphState>({
   // Computed: which files should be visible based on folder expansion
   const visibleFileIds = useMemo(() => {
     const visible = new Set<string>();
-    
-    mockGraphData.files.forEach(file => {
+
+    mockGraphData.files.forEach((file) => {
+      // NOTE: keep initial render clean (Repo + top-level folders only)
+      // so we do not show repo-root files unless we explicitly add a repo-expand concept.
+      if (file.parentId === mockGraphData.repository.id) {
+        return;
+      }
+
       // Check if parent folder chain is expanded
       let parentId = file.parentId;
       let isVisible = true;
-      
-      while (parentId && parentId !== 'repo-1') {
+
+      while (parentId && parentId !== mockGraphData.repository.id) {
         if (!state.expandedFolders.has(parentId)) {
           isVisible = false;
           break;
         }
-        const parent = mockGraphData.folders.find(f => f.id === parentId);
+        const parent = mockGraphData.folders.find((f) => f.id === parentId);
         parentId = parent?.parentId || '';
       }
-      
+
       if (isVisible) {
         visible.add(file.id);
       }
     });
-    
+
     return visible;
   }, [state.expandedFolders]);
 
