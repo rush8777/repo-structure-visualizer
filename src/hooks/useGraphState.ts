@@ -205,15 +205,13 @@ const [state, setState] = useState<GraphState>({
       const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
         (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
       
-      const isExpanded = state.expandedFolders.has(folder.id);
-
       nodes.push({
         id: folder.id,
         type: 'folder',
         position: { x, y },
         data: { 
           folder,
-          isExpanded,
+          isExpanded: state.expandedFolders.has(folder.id),
           onToggleExpand: toggleFolder,
           isFaded,
           isPromptSelected: state.promptSelectedIds.has(folder.id),
@@ -221,15 +219,13 @@ const [state, setState] = useState<GraphState>({
       });
     });
     
-    // L2 folders
+    // L2 folders (children of expanded L1 folders)
     let l2Index = 0;
     mockGraphData.folders
       .filter(f => rootFolders.some(rf => rf.id === f.parentId))
+      .filter(f => state.expandedFolders.has(f.parentId))
       .forEach((folder) => {
-        const parentId = folder.parentId;
-        const parentPos = positionMap.get(parentId);
-        
-        // Use a stable offset for layout
+        const parentPos = positionMap.get(folder.parentId);
         const x = 100 + l2Index * LAYOUT.SPACING_X;
         const y = LAYOUT.FOLDER_L2_Y;
         positionMap.set(folder.id, { x, y });
@@ -238,9 +234,7 @@ const [state, setState] = useState<GraphState>({
         const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
           (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
         
-        const isExpanded = state.expandedFolders.has(folder.id);
-        const parentExpanded = state.expandedFolders.has(parentId);
-
+        // Check if this folder should show a group node instead
         const group = mockGraphData.groups.find(g => g.parentId === folder.id);
         const shouldShowGroup = group && !state.expandedGroups.has(group.id) && 
           (folder.fileCount || 0) >= 10;
@@ -248,34 +242,26 @@ const [state, setState] = useState<GraphState>({
         nodes.push({
           id: folder.id,
           type: 'folder',
-          // Position relative to parent, but with layout offset
-          position: { 
-            x: (parentPos ? x - parentPos.x : 0), 
-            y: (parentPos ? y - parentPos.y : 0) 
-          },
-          parentId,
-          extent: 'parent',
-          hidden: !parentExpanded,
+          position: { x, y },
           data: { 
             folder,
-            isExpanded,
+            isExpanded: state.expandedFolders.has(folder.id),
             onToggleExpand: toggleFolder,
             isFaded,
             isPromptSelected: state.promptSelectedIds.has(folder.id),
             hasGroup: shouldShowGroup,
           },
-        } as any);
+        });
       });
     
-    // L3 folders
+    // L3 folders (children of expanded L2 folders)
     const l2Folders = mockGraphData.folders.filter(f => rootFolders.some(rf => rf.id === f.parentId));
     let l3Index = 0;
     mockGraphData.folders
       .filter(f => l2Folders.some(l2 => l2.id === f.parentId))
+      .filter(f => state.expandedFolders.has(f.parentId))
       .forEach((folder) => {
-        const parentId = folder.parentId;
-        const parentPos = positionMap.get(parentId);
-        
+        const parentPos = positionMap.get(folder.parentId);
         const x = parentPos ? parentPos.x - 100 + l3Index * LAYOUT.SPACING_X : 100 + l3Index * LAYOUT.SPACING_X;
         const y = LAYOUT.FOLDER_L3_Y;
         positionMap.set(folder.id, { x, y });
@@ -284,111 +270,103 @@ const [state, setState] = useState<GraphState>({
         const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
           (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
         
-        const isExpanded = state.expandedFolders.has(folder.id);
-        const parentExpanded = state.expandedFolders.has(parentId);
-
         nodes.push({
           id: folder.id,
           type: 'folder',
-          position: { 
-            x: (parentPos ? x - parentPos.x : 0), 
-            y: (parentPos ? y - parentPos.y : 0) 
-          },
-          parentId,
-          extent: 'parent',
-          hidden: !parentExpanded,
+          position: { x, y },
           data: { 
             folder,
-            isExpanded,
+            isExpanded: state.expandedFolders.has(folder.id),
             onToggleExpand: toggleFolder,
             isFaded,
             isPromptSelected: state.promptSelectedIds.has(folder.id),
           },
-        } as any);
+        });
       });
     
-    // Group nodes
+    // Group nodes (aggregated files)
     mockGraphData.groups.forEach((group) => {
-      const parentId = group.parentId;
-      const parentPos = positionMap.get(parentId);
+      const parentPos = positionMap.get(group.parentId);
       if (!parentPos) return;
+      if (state.expandedGroups.has(group.id)) return; // Don't show if expanded
+      if (!state.expandedFolders.has(group.parentId)) return; // Parent must be expanded
       
       const isFaded = (state.searchQuery && !searchMatchIds?.has(group.id)) ||
         (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(group.id));
       
-      const isExpanded = state.expandedGroups.has(group.id);
-      const parentExpanded = state.expandedFolders.has(parentId);
-
       nodes.push({
         id: group.id,
         type: 'group',
-        position: { x: 0, y: LAYOUT.GROUP_OFFSET_Y },
-        parentId,
-        extent: 'parent',
-        hidden: !parentExpanded || isExpanded,
+        position: { x: parentPos.x, y: parentPos.y + LAYOUT.GROUP_OFFSET_Y },
         data: {
           group,
           onToggleExpand: toggleGroup,
           isFaded,
           isPromptSelected: state.promptSelectedIds.has(group.id),
         },
-      } as any);
-    });
-    
-    // Files
-    const filesByParent = new Map<string, typeof mockGraphData.files>();
-    mockGraphData.files.forEach(file => {
-      const files = filesByParent.get(file.parentId) || [];
-      files.push(file);
-      filesByParent.set(file.parentId, files);
-    });
-    
-    filesByParent.forEach((files, parentId) => {
-      const parentPos = positionMap.get(parentId);
-      const baseX = parentPos?.x ?? 200;
-      const baseY = parentPos ? parentPos.y + LAYOUT.SPACING_Y : LAYOUT.FILE_Y;
-      const cols = Math.min(4, files.length);
-      const colWidth = 220;
-      const rowHeight = 100;
-      
-      files.forEach((file, idx) => {
-        const col = idx % cols;
-        const row = Math.floor(idx / cols);
-        const x = baseX + (col - (cols - 1) / 2) * colWidth;
-        const y = baseY + row * rowHeight;
-        
-        const isFaded = (state.searchQuery && !searchMatchIds?.has(file.id)) ||
-          (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(file.id));
-        
-        // Visibility logic
-        let isVisible = visibleFileIds.has(file.id);
-        const group = mockGraphData.groups.find(g => g.childIds.includes(file.id));
-        if (group && !state.expandedGroups.has(group.id)) {
-          isVisible = false;
-        }
-        if (state.viewMode === 'risk' && !file.isHotspot) {
-          isVisible = false;
-        }
-
-        nodes.push({
-          id: file.id,
-          type: 'file',
-          position: { 
-            x: (parentPos ? x - parentPos.x : 0), 
-            y: (parentPos ? y - parentPos.y : 0) 
-          },
-          parentId,
-          extent: 'parent',
-          hidden: !isVisible,
-          data: { 
-            file,
-            isFaded,
-            isPromptSelected: state.promptSelectedIds.has(file.id),
-            isHotspot: file.isHotspot,
-          },
-        } as any);
       });
     });
+    
+    // Files (only if visible and not in a collapsed group)
+    if (state.viewMode !== 'structure' || state.expandedFolders.size > 0) {
+      // Group files by parent folder for better layout
+      const filesByParent = new Map<string, typeof mockGraphData.files>();
+      
+      mockGraphData.files
+        .filter(f => visibleFileIds.has(f.id))
+        .filter(f => {
+          // Check if file is in a collapsed group
+          const group = mockGraphData.groups.find(g => g.childIds.includes(f.id));
+          if (group && !state.expandedGroups.has(group.id)) {
+            return false;
+          }
+          return true;
+        })
+        .filter(f => {
+          // In risk mode, only show hotspots
+          if (state.viewMode === 'risk') {
+            return f.isHotspot;
+          }
+          return true;
+        })
+        .forEach(file => {
+          const files = filesByParent.get(file.parentId) || [];
+          files.push(file);
+          filesByParent.set(file.parentId, files);
+        });
+      
+      // Position files in a grid under their parent
+      filesByParent.forEach((files, parentId) => {
+        const parentPos = positionMap.get(parentId);
+        const baseX = parentPos?.x ?? 200;
+        const baseY = LAYOUT.FILE_Y;
+        const cols = Math.min(4, files.length); // Max 4 columns
+        const colWidth = 220;
+        const rowHeight = 100;
+        
+        files.forEach((file, idx) => {
+          const col = idx % cols;
+          const row = Math.floor(idx / cols);
+          const x = baseX + (col - (cols - 1) / 2) * colWidth;
+          const y = baseY + row * rowHeight;
+          
+          const isFaded = (state.searchQuery && !searchMatchIds?.has(file.id)) ||
+            (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(file.id));
+          
+          nodes.push({
+            id: file.id,
+            type: 'file',
+            position: { x, y },
+            data: { 
+              file,
+              isFaded,
+              isPromptSelected: state.promptSelectedIds.has(file.id),
+              isHotspot: file.isHotspot,
+            },
+          });
+        });
+      });
+    }
     
     return nodes;
   }, [state, visibleFileIds, searchMatchIds, relatedNodeIds, toggleFolder, toggleGroup]);
