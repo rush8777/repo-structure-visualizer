@@ -13,12 +13,14 @@ import {
 
 // Stable layout positions - same repo = same layout every render
 const LAYOUT = {
-  REPO_Y: 0,
-  FOLDER_L1_Y: 160,
-  FOLDER_L2_Y: 320,
-  FILE_Y: 480,
-  SPACING_X: 220,
-  GROUP_OFFSET_Y: 20,
+  REPO_Y: 50,
+  FOLDER_L1_Y: 200,
+  FOLDER_L2_Y: 380,
+  FOLDER_L3_Y: 560,
+  FILE_Y: 740,
+  SPACING_X: 280,
+  SPACING_Y: 120,
+  GROUP_OFFSET_Y: 140,
 };
 
 interface GraphState {
@@ -31,9 +33,9 @@ interface GraphState {
 }
 
 export const useGraphState = () => {
-  const [state, setState] = useState<GraphState>({
+const [state, setState] = useState<GraphState>({
     viewMode: 'structure',
-    expandedFolders: new Set(['folder-src', 'folder-components']),
+    expandedFolders: new Set(), // Start collapsed
     expandedGroups: new Set(),
     selectedNodeId: null,
     searchQuery: '',
@@ -70,7 +72,37 @@ export const useGraphState = () => {
   }, []);
 
   const selectNode = useCallback((nodeId: string | null) => {
-    setState(prev => ({ ...prev, selectedNodeId: nodeId }));
+    setState(prev => {
+      if (!nodeId) return { ...prev, selectedNodeId: null };
+      
+      // Auto-expand parent folder chain when selecting a node
+      const newExpanded = new Set(prev.expandedFolders);
+      
+      // Find if it's a file and expand its parent chain
+      const file = mockGraphData.files.find(f => f.id === nodeId);
+      if (file) {
+        let parentId = file.parentId;
+        while (parentId && parentId !== 'repo-1') {
+          newExpanded.add(parentId);
+          const parent = mockGraphData.folders.find(f => f.id === parentId);
+          parentId = parent?.parentId || '';
+        }
+      }
+      
+      // Find if it's a folder and expand it + its parent chain
+      const folder = mockGraphData.folders.find(f => f.id === nodeId);
+      if (folder) {
+        newExpanded.add(folder.id);
+        let parentId = folder.parentId;
+        while (parentId && parentId !== 'repo-1') {
+          newExpanded.add(parentId);
+          const parent = mockGraphData.folders.find(f => f.id === parentId);
+          parentId = parent?.parentId || '';
+        }
+      }
+      
+      return { ...prev, selectedNodeId: nodeId, expandedFolders: newExpanded };
+    });
   }, []);
 
   const setSearchQuery = useCallback((query: string) => {
@@ -247,16 +279,15 @@ export const useGraphState = () => {
       });
     
     // L3 folders (children of expanded L2 folders)
+    const l2Folders = mockGraphData.folders.filter(f => rootFolders.some(rf => rf.id === f.parentId));
     let l3Index = 0;
     mockGraphData.folders
-      .filter(f => {
-        const parent = mockGraphData.folders.find(pf => pf.id === f.parentId);
-        return parent && rootFolders.some(rf => rf.id === parent.parentId);
-      })
+      .filter(f => l2Folders.some(l2 => l2.id === f.parentId))
       .filter(f => state.expandedFolders.has(f.parentId))
       .forEach((folder) => {
-        const x = 50 + l3Index * 200;
-        const y = LAYOUT.FILE_Y - 80;
+        const parentPos = positionMap.get(folder.parentId);
+        const x = parentPos ? parentPos.x - 100 + l3Index * LAYOUT.SPACING_X : 100 + l3Index * LAYOUT.SPACING_X;
+        const y = LAYOUT.FOLDER_L3_Y;
         positionMap.set(folder.id, { x, y });
         l3Index++;
         
@@ -290,7 +321,7 @@ export const useGraphState = () => {
       nodes.push({
         id: group.id,
         type: 'group',
-        position: { x: parentPos.x, y: parentPos.y + 120 },
+        position: { x: parentPos.x, y: parentPos.y + LAYOUT.GROUP_OFFSET_Y },
         data: {
           group,
           onToggleExpand: toggleGroup,
@@ -302,7 +333,9 @@ export const useGraphState = () => {
     
     // Files (only if visible and not in a collapsed group)
     if (state.viewMode !== 'structure' || state.expandedFolders.size > 0) {
-      let fileIndex = 0;
+      // Group files by parent folder for better layout
+      const filesByParent = new Map<string, typeof mockGraphData.files>();
+      
       mockGraphData.files
         .filter(f => visibleFileIds.has(f.id))
         .filter(f => {
@@ -320,10 +353,26 @@ export const useGraphState = () => {
           }
           return true;
         })
-        .forEach((file) => {
-          const parentPos = positionMap.get(file.parentId);
-          const baseX = parentPos ? parentPos.x : 100 + fileIndex * 200;
-          const baseY = LAYOUT.FILE_Y + (fileIndex % 3) * 100;
+        .forEach(file => {
+          const files = filesByParent.get(file.parentId) || [];
+          files.push(file);
+          filesByParent.set(file.parentId, files);
+        });
+      
+      // Position files in a grid under their parent
+      filesByParent.forEach((files, parentId) => {
+        const parentPos = positionMap.get(parentId);
+        const baseX = parentPos?.x ?? 200;
+        const baseY = LAYOUT.FILE_Y;
+        const cols = Math.min(4, files.length); // Max 4 columns
+        const colWidth = 220;
+        const rowHeight = 100;
+        
+        files.forEach((file, idx) => {
+          const col = idx % cols;
+          const row = Math.floor(idx / cols);
+          const x = baseX + (col - (cols - 1) / 2) * colWidth;
+          const y = baseY + row * rowHeight;
           
           const isFaded = (state.searchQuery && !searchMatchIds?.has(file.id)) ||
             (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(file.id));
@@ -331,7 +380,7 @@ export const useGraphState = () => {
           nodes.push({
             id: file.id,
             type: 'file',
-            position: { x: baseX + (fileIndex % 4) * 60 - 60, y: baseY },
+            position: { x, y },
             data: { 
               file,
               isFaded,
@@ -339,9 +388,8 @@ export const useGraphState = () => {
               isHotspot: file.isHotspot,
             },
           });
-          
-          fileIndex++;
         });
+      });
     }
     
     return nodes;
