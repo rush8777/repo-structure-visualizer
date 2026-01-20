@@ -248,7 +248,7 @@ const [state, setState] = useState<GraphState>({
           id: folder.id,
           type: 'folder',
           position: { x: x - (parentPos?.x || 0), y: y - (parentPos?.y || 0) },
-          parentNode: parentId,
+          parentId,
           extent: 'parent',
           hidden: !parentExpanded,
           data: { 
@@ -259,7 +259,7 @@ const [state, setState] = useState<GraphState>({
             isPromptSelected: state.promptSelectedIds.has(folder.id),
             hasGroup: shouldShowGroup,
           },
-        });
+        } as any);
       });
     
     // L3 folders
@@ -285,7 +285,7 @@ const [state, setState] = useState<GraphState>({
           id: folder.id,
           type: 'folder',
           position: { x: x - (parentPos?.x || 0), y: y - (parentPos?.y || 0) },
-          parentNode: parentId,
+          parentId,
           extent: 'parent',
           hidden: !parentExpanded,
           data: { 
@@ -295,7 +295,7 @@ const [state, setState] = useState<GraphState>({
             isFaded,
             isPromptSelected: state.promptSelectedIds.has(folder.id),
           },
-        });
+        } as any);
       });
     
     // Group nodes
@@ -314,7 +314,7 @@ const [state, setState] = useState<GraphState>({
         id: group.id,
         type: 'group',
         position: { x: 0, y: LAYOUT.GROUP_OFFSET_Y },
-        parentNode: parentId,
+        parentId,
         extent: 'parent',
         hidden: !parentExpanded || isExpanded,
         data: {
@@ -323,7 +323,7 @@ const [state, setState] = useState<GraphState>({
           isFaded,
           isPromptSelected: state.promptSelectedIds.has(group.id),
         },
-      });
+      } as any);
     });
     
     // Files
@@ -368,7 +368,7 @@ const [state, setState] = useState<GraphState>({
             id: file.id,
             type: 'file',
             position: { x: x - (parentPos?.x || 0), y: y - (parentPos?.y || 0) },
-            parentNode: parentId,
+            parentId,
             extent: 'parent',
             hidden: !isVisible,
             data: { 
@@ -377,7 +377,7 @@ const [state, setState] = useState<GraphState>({
               isPromptSelected: state.promptSelectedIds.has(file.id),
               isHotspot: file.isHotspot,
             },
-          });
+          } as any);
         });
       });
     }
