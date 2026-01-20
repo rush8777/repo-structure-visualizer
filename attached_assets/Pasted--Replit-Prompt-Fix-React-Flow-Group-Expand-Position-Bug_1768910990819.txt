@@ -1,0 +1,135 @@
+
+
+### ✅ **Replit Prompt: Fix React Flow Group Expand Position Bug**
+
+> **Context**
+>
+> I am using **React Flow** with **group/parent nodes** and **selection grouping** (`parentNode`, `extent: "parent"`).
+>
+> There is a bug where:
+>
+> * After moving a **parent (group) node**
+> * Collapsing it (hiding children)
+> * Then expanding it again
+>
+> All **child nodes reappear from the center/origin of the parent**, instead of their original positions.
+>
+> This happens because child node positions are being **recomputed or reset** on expand, instead of preserved as **relative-to-parent coordinates**.
+
+---
+
+### 🔍 **Your Task**
+
+Fix this bug by **preserving child node relative positions** correctly.
+
+---
+
+### 🧠 **Rules You MUST Follow**
+
+1. **Do NOT re-layout or recompute child positions on expand**
+2. **Do NOT call `fitView()` or auto-layout on collapse/expand**
+3. **Child node positions must be relative to the parent**
+4. **Child positions must persist across collapse → expand**
+5. **Only update visibility (`hidden`) on collapse/expand**
+6. **Do not refactor unrelated logic or UI**
+
+---
+
+### 🧩 **Correct Behavior Requirements**
+
+#### When a group is first created:
+
+* Convert child positions from **absolute → relative**
+
+```ts
+relativeX = child.x - parent.x
+relativeY = child.y - parent.y
+```
+
+#### Store this relative position:
+
+```ts
+node.data.relativePosition = node.position
+```
+
+---
+
+#### On collapse:
+
+```ts
+hidden = true
+```
+
+❌ Do NOT change position
+
+---
+
+#### On expand:
+
+```ts
+hidden = false
+position = data.relativePosition
+```
+
+❌ Do NOT recalculate
+
+---
+
+#### On child drag:
+
+* Update stored relative position
+
+```ts
+onNodeDragStop → data.relativePosition = node.position
+```
+
+---
+
+### 🛠 **What to Change in Code**
+
+* Fix expand/collapse handlers so they **only toggle `hidden`**
+* Ensure child nodes:
+
+  * Have `parentNode`
+  * Have `extent: "parent"`
+  * Never get their `position` reset on expand
+* Remove any code that:
+
+  * Re-centers children
+  * Uses bounding-box math during expand
+  * Re-runs layout on expand
+
+---
+
+### ✅ **Expected Result**
+
+* Moving a group moves all children correctly
+* Collapsing hides children
+* Expanding restores children **exactly where they were**
+* No child node jumps to the center/origin
+* No visual jitter or reflow
+
+---
+
+### ❗ **Important**
+
+If you see logic that recalculates positions on expand — **remove it**.
+The correct fix is **state preservation**, not layout math.
+
+---
+
+### 🧠 **Technology Stack**
+
+* React
+* React Flow
+* Controlled nodes state (`useNodesState` or reducer)
+
+---
+
+### 🧪 **Deliverable**
+
+* A minimal fix
+* Clean diff
+* No behavior changes outside grouping
+
+

@@ -150,9 +150,13 @@ const RepositoryGraphInner = () => {
   useEffect(() => {
     setNodes((currentNodes) => {
       const positionMap = new Map(currentNodes.map(n => [n.id, n.position]));
+      const hiddenMap = new Map(currentNodes.map(n => [n.id, n.hidden]));
+      
       return graphNodes.map(node => ({
         ...node,
         position: positionMap.get(node.id) ?? node.position,
+        // Preserve hidden state if we are just updating data, 
+        // but graphNodes (from useGraphState) is the source of truth for visibility
       }));
     });
     setEdges(graphEdges);

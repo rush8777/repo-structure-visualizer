@@ -205,13 +205,15 @@ const [state, setState] = useState<GraphState>({
       const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
         (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
       
+      const isExpanded = state.expandedFolders.has(folder.id);
+
       nodes.push({
         id: folder.id,
         type: 'folder',
         position: { x, y },
         data: { 
           folder,
-          isExpanded: state.expandedFolders.has(folder.id),
+          isExpanded,
           onToggleExpand: toggleFolder,
           isFaded,
           isPromptSelected: state.promptSelectedIds.has(folder.id),
@@ -219,13 +221,13 @@ const [state, setState] = useState<GraphState>({
       });
     });
     
-    // L2 folders (children of expanded L1 folders)
+    // L2 folders
     let l2Index = 0;
     mockGraphData.folders
       .filter(f => rootFolders.some(rf => rf.id === f.parentId))
-      .filter(f => state.expandedFolders.has(f.parentId))
       .forEach((folder) => {
-        const parentPos = positionMap.get(folder.parentId);
+        const parentId = folder.parentId;
+        const parentPos = positionMap.get(parentId);
         const x = 100 + l2Index * LAYOUT.SPACING_X;
         const y = LAYOUT.FOLDER_L2_Y;
         positionMap.set(folder.id, { x, y });
@@ -234,6 +236,9 @@ const [state, setState] = useState<GraphState>({
         const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
           (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
         
+        const isExpanded = state.expandedFolders.has(folder.id);
+        const parentExpanded = state.expandedFolders.has(parentId);
+
         // Check if this folder should show a group node instead
         const group = mockGraphData.groups.find(g => g.parentId === folder.id);
         const shouldShowGroup = group && !state.expandedGroups.has(group.id) && 
@@ -242,10 +247,13 @@ const [state, setState] = useState<GraphState>({
         nodes.push({
           id: folder.id,
           type: 'folder',
-          position: { x, y },
+          position: { x: x - (parentPos?.x || 0), y: y - (parentPos?.y || 0) },
+          parentNode: parentId,
+          extent: 'parent',
+          hidden: !parentExpanded,
           data: { 
             folder,
-            isExpanded: state.expandedFolders.has(folder.id),
+            isExpanded,
             onToggleExpand: toggleFolder,
             isFaded,
             isPromptSelected: state.promptSelectedIds.has(folder.id),
@@ -254,14 +262,14 @@ const [state, setState] = useState<GraphState>({
         });
       });
     
-    // L3 folders (children of expanded L2 folders)
+    // L3 folders
     const l2Folders = mockGraphData.folders.filter(f => rootFolders.some(rf => rf.id === f.parentId));
     let l3Index = 0;
     mockGraphData.folders
       .filter(f => l2Folders.some(l2 => l2.id === f.parentId))
-      .filter(f => state.expandedFolders.has(f.parentId))
       .forEach((folder) => {
-        const parentPos = positionMap.get(folder.parentId);
+        const parentId = folder.parentId;
+        const parentPos = positionMap.get(parentId);
         const x = parentPos ? parentPos.x - 100 + l3Index * LAYOUT.SPACING_X : 100 + l3Index * LAYOUT.SPACING_X;
         const y = LAYOUT.FOLDER_L3_Y;
         positionMap.set(folder.id, { x, y });
@@ -270,13 +278,19 @@ const [state, setState] = useState<GraphState>({
         const isFaded = (state.searchQuery && !searchMatchIds?.has(folder.id)) ||
           (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(folder.id));
         
+        const isExpanded = state.expandedFolders.has(folder.id);
+        const parentExpanded = state.expandedFolders.has(parentId);
+
         nodes.push({
           id: folder.id,
           type: 'folder',
-          position: { x, y },
+          position: { x: x - (parentPos?.x || 0), y: y - (parentPos?.y || 0) },
+          parentNode: parentId,
+          extent: 'parent',
+          hidden: !parentExpanded,
           data: { 
             folder,
-            isExpanded: state.expandedFolders.has(folder.id),
+            isExpanded,
             onToggleExpand: toggleFolder,
             isFaded,
             isPromptSelected: state.promptSelectedIds.has(folder.id),
@@ -284,20 +298,25 @@ const [state, setState] = useState<GraphState>({
         });
       });
     
-    // Group nodes (aggregated files)
+    // Group nodes
     mockGraphData.groups.forEach((group) => {
-      const parentPos = positionMap.get(group.parentId);
+      const parentId = group.parentId;
+      const parentPos = positionMap.get(parentId);
       if (!parentPos) return;
-      if (state.expandedGroups.has(group.id)) return; // Don't show if expanded
-      if (!state.expandedFolders.has(group.parentId)) return; // Parent must be expanded
       
       const isFaded = (state.searchQuery && !searchMatchIds?.has(group.id)) ||
         (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(group.id));
       
+      const isExpanded = state.expandedGroups.has(group.id);
+      const parentExpanded = state.expandedFolders.has(parentId);
+
       nodes.push({
         id: group.id,
         type: 'group',
-        position: { x: parentPos.x, y: parentPos.y + LAYOUT.GROUP_OFFSET_Y },
+        position: { x: 0, y: LAYOUT.GROUP_OFFSET_Y },
+        parentNode: parentId,
+        extent: 'parent',
+        hidden: !parentExpanded || isExpanded,
         data: {
           group,
           onToggleExpand: toggleGroup,
@@ -307,40 +326,22 @@ const [state, setState] = useState<GraphState>({
       });
     });
     
-    // Files (only if visible and not in a collapsed group)
-    if (state.viewMode !== 'structure' || state.expandedFolders.size > 0) {
-      // Group files by parent folder for better layout
+    // Files
+    if (true) { // Always generate file nodes, control visibility via hidden
       const filesByParent = new Map<string, typeof mockGraphData.files>();
       
       mockGraphData.files
-        .filter(f => visibleFileIds.has(f.id))
-        .filter(f => {
-          // Check if file is in a collapsed group
-          const group = mockGraphData.groups.find(g => g.childIds.includes(f.id));
-          if (group && !state.expandedGroups.has(group.id)) {
-            return false;
-          }
-          return true;
-        })
-        .filter(f => {
-          // In risk mode, only show hotspots
-          if (state.viewMode === 'risk') {
-            return f.isHotspot;
-          }
-          return true;
-        })
         .forEach(file => {
           const files = filesByParent.get(file.parentId) || [];
           files.push(file);
           filesByParent.set(file.parentId, files);
         });
       
-      // Position files in a grid under their parent
       filesByParent.forEach((files, parentId) => {
         const parentPos = positionMap.get(parentId);
         const baseX = parentPos?.x ?? 200;
         const baseY = LAYOUT.FILE_Y;
-        const cols = Math.min(4, files.length); // Max 4 columns
+        const cols = Math.min(4, files.length);
         const colWidth = 220;
         const rowHeight = 100;
         
@@ -353,10 +354,23 @@ const [state, setState] = useState<GraphState>({
           const isFaded = (state.searchQuery && !searchMatchIds?.has(file.id)) ||
             (state.viewMode === 'dependencies' && state.selectedNodeId && !relatedNodeIds.has(file.id));
           
+          // Visibility logic
+          let isVisible = visibleFileIds.has(file.id);
+          const group = mockGraphData.groups.find(g => g.childIds.includes(file.id));
+          if (group && !state.expandedGroups.has(group.id)) {
+            isVisible = false;
+          }
+          if (state.viewMode === 'risk' && !file.isHotspot) {
+            isVisible = false;
+          }
+
           nodes.push({
             id: file.id,
             type: 'file',
-            position: { x, y },
+            position: { x: x - (parentPos?.x || 0), y: y - (parentPos?.y || 0) },
+            parentNode: parentId,
+            extent: 'parent',
+            hidden: !isVisible,
             data: { 
               file,
               isFaded,
