@@ -150,10 +150,16 @@ const RepositoryGraphInner = () => {
   useEffect(() => {
     setNodes((currentNodes) => {
       const positionMap = new Map(currentNodes.map(n => [n.id, n.position]));
-      return graphNodes.map(node => ({
-        ...node,
-        position: positionMap.get(node.id) ?? node.position,
-      }));
+      return graphNodes.map(node => {
+        const existingPos = positionMap.get(node.id);
+        
+        // If the node is new (not in currentNodes), we use its initial calculated position
+        // which now starts at its parent's position in useGraphState.ts
+        return {
+          ...node,
+          position: existingPos ?? node.position,
+        };
+      });
     });
     setEdges(graphEdges);
   }, [graphNodes, graphEdges, setNodes, setEdges]);
