@@ -72,37 +72,7 @@ const [state, setState] = useState<GraphState>({
   }, []);
 
   const selectNode = useCallback((nodeId: string | null) => {
-    setState(prev => {
-      if (!nodeId) return { ...prev, selectedNodeId: null };
-      
-      // Auto-expand parent folder chain when selecting a node
-      const newExpanded = new Set(prev.expandedFolders);
-      
-      // Find if it's a file and expand its parent chain
-      const file = mockGraphData.files.find(f => f.id === nodeId);
-      if (file) {
-        let parentId = file.parentId;
-        while (parentId && parentId !== 'repo-1') {
-          newExpanded.add(parentId);
-          const parent = mockGraphData.folders.find(f => f.id === parentId);
-          parentId = parent?.parentId || '';
-        }
-      }
-      
-      // Find if it's a folder and expand it + its parent chain
-      const folder = mockGraphData.folders.find(f => f.id === nodeId);
-      if (folder) {
-        newExpanded.add(folder.id);
-        let parentId = folder.parentId;
-        while (parentId && parentId !== 'repo-1') {
-          newExpanded.add(parentId);
-          const parent = mockGraphData.folders.find(f => f.id === parentId);
-          parentId = parent?.parentId || '';
-        }
-      }
-      
-      return { ...prev, selectedNodeId: nodeId, expandedFolders: newExpanded };
-    });
+    setState(prev => ({ ...prev, selectedNodeId: nodeId }));
   }, []);
 
   const setSearchQuery = useCallback((query: string) => {
