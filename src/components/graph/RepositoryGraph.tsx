@@ -66,6 +66,86 @@ const RepositoryGraphInner = () => {
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { zoomIn, zoomOut, fitView, setViewport } = useReactFlow();
 
+  const onNodeDrag = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      const childIds = edges
+        .filter((e) => e.source === node.id && e.data?.label === 'CONTAINS')
+        .map((e) => e.target);
+
+      if (childIds.length === 0) return;
+
+      setNodes((nds) => {
+        const nodeIndex = nds.findIndex((n) => n.id === node.id);
+        if (nodeIndex === -1) return nds;
+
+        const draggedNode = nds[nodeIndex];
+        const prevDraggedNode = graphNodes.find(n => n.id === node.id) || draggedNode;
+        
+        // We need to calculate the delta from the last known position
+        // But React Flow handles the dragged node's position automatically in nodes state
+        // We just need to find the children and update them.
+        
+        return nds.map((n) => {
+          if (childIds.includes(n.id)) {
+            // Find the edge to get the relationship
+            const edge = edges.find(e => e.source === node.id && e.target === n.id);
+            if (edge) {
+              // This is a bit complex with flat nodes. 
+              // A simpler way is to track the delta of the dragged node.
+              // However, React Flow's onNodeDrag gives us the node with its NEW position.
+            }
+          }
+          return n;
+        });
+      });
+    },
+    [edges, setNodes, graphNodes]
+  );
+
+  const onNodeDragStart = useRef<{id: string, x: number, y: number} | null>(null);
+
+  const handleNodeDragStart = useCallback((_: React.MouseEvent, node: Node) => {
+    onNodeDragStart.current = { id: node.id, x: node.position.x, y: node.position.y };
+  }, []);
+
+  const handleNodeDrag = useCallback((_: React.MouseEvent, node: Node) => {
+    if (!onNodeDragStart.current || onNodeDragStart.current.id !== node.id) return;
+
+    const dx = node.position.x - onNodeDragStart.current.x;
+    const dy = node.position.y - onNodeDragStart.current.y;
+
+    if (dx === 0 && dy === 0) return;
+
+    // Recursive function to find all descendants
+    const getDescendants = (parentId: string): string[] => {
+      const children = edges
+        .filter((e) => e.source === parentId && e.data?.label === 'CONTAINS')
+        .map((e) => e.target);
+      return [...children, ...children.flatMap(getDescendants)];
+    };
+
+    const descendants = getDescendants(node.id);
+
+    if (descendants.length > 0) {
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (descendants.includes(n.id)) {
+            return {
+              ...n,
+              position: {
+                x: n.position.x + dx,
+                y: n.position.y + dy,
+              },
+            };
+          }
+          return n;
+        })
+      );
+    }
+
+    onNodeDragStart.current = { id: node.id, x: node.position.x, y: node.position.y };
+  }, [edges, setNodes]);
+
   // Sync nodes/edges when graph state changes (but preserve user-moved positions)
   useEffect(() => {
     setNodes((currentNodes) => {
@@ -168,6 +248,8 @@ const RepositoryGraphInner = () => {
         onNodeClick={handleNodeClick}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
+        onNodeDragStart={handleNodeDragStart}
+        onNodeDrag={handleNodeDrag}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
