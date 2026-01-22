@@ -66,10 +66,17 @@ const RepositoryGraphInner = () => {
   const tooltipTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { zoomIn, zoomOut, fitView, setViewport } = useReactFlow();
 
+  // Store user-modified positions persistently
+  const userPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const onNodeDragStartPos = useRef<{id: string, x: number, y: number} | null>(null);
 
   const handleNodeDragStart = useCallback((_: React.MouseEvent, node: Node) => {
     onNodeDragStartPos.current = { id: node.id, x: node.position.x, y: node.position.y };
+  }, []);
+
+  // When dragging ends, store the final position
+  const handleNodeDragStop = useCallback((_: React.MouseEvent, node: Node) => {
+    userPositionsRef.current.set(node.id, { x: node.position.x, y: node.position.y });
   }, []);
 
   const handleNodeDrag = useCallback((_: React.MouseEvent, node: Node) => {
@@ -94,12 +101,15 @@ const RepositoryGraphInner = () => {
       setNodes((nds) =>
         nds.map((n) => {
           if (descendants.includes(n.id)) {
+            const newPos = {
+              x: n.position.x + dx,
+              y: n.position.y + dy,
+            };
+            // Also store in persistent ref
+            userPositionsRef.current.set(n.id, newPos);
             return {
               ...n,
-              position: {
-                x: n.position.x + dx,
-                y: n.position.y + dy,
-              },
+              position: newPos,
             };
           }
           return n;
@@ -110,14 +120,24 @@ const RepositoryGraphInner = () => {
     onNodeDragStartPos.current = { id: node.id, x: node.position.x, y: node.position.y };
   }, [edges, setNodes]);
 
-  // Sync nodes/edges when graph state changes (but preserve user-moved positions)
+  // Sync nodes/edges when graph state changes
+  // KEY FIX: Preserve user-moved positions and only toggle hidden property
   useEffect(() => {
     setNodes((currentNodes) => {
-      const positionMap = new Map(currentNodes.map(n => [n.id, n.position]));
-      return graphNodes.map(node => ({
-        ...node,
-        position: positionMap.get(node.id) ?? node.position,
-      }));
+      // Build map of current node positions
+      const currentPosMap = new Map(currentNodes.map(n => [n.id, n.position]));
+      
+      return graphNodes.map(graphNode => {
+        // Priority: 1) User-dragged position, 2) Current position, 3) Graph-computed position
+        const userPos = userPositionsRef.current.get(graphNode.id);
+        const currentPos = currentPosMap.get(graphNode.id);
+        const position = userPos ?? currentPos ?? graphNode.position;
+        
+        return {
+          ...graphNode,
+          position,
+        };
+      });
     });
     setEdges(graphEdges);
   }, [graphNodes, graphEdges, setNodes, setEdges]);
@@ -214,6 +234,7 @@ const RepositoryGraphInner = () => {
         onNodeMouseLeave={handleNodeMouseLeave}
         onNodeDragStart={handleNodeDragStart}
         onNodeDrag={handleNodeDrag}
+        onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
