@@ -56,8 +56,8 @@ const NodeTooltip = ({ tooltip }: { tooltip: TooltipData | null }) => {
 
 const RepositoryGraphInner = () => {
   const { state, nodes: graphNodes, edges: graphEdges, actions, computed } = useGraphState();
-  const [nodes, setNodes, onNodesChange] = useNodesState(graphNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(graphEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNode, setSelectedNode] = useState<{
     type: 'repository' | 'folder' | 'file';
     data: RepositoryData | FolderData | FileData;
@@ -68,25 +68,36 @@ const RepositoryGraphInner = () => {
 
   // Store user-modified positions persistently
   const userPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  // Track if we're currently dragging to prevent state sync during drag
+  const isDraggingRef = useRef(false);
+  // Track if initial sync has happened
+  const initializedRef = useRef(false);
+
+  const handleNodeDragStart = useCallback(() => {
+    isDraggingRef.current = true;
+  }, []);
 
   // When dragging ends, store final positions for all dragged nodes
-  const handleNodeDragStop = useCallback((_: React.MouseEvent, node: Node, nodes: Node[]) => {
+  const handleNodeDragStop = useCallback((_: React.MouseEvent, node: Node, allNodes: Node[]) => {
+    isDraggingRef.current = false;
+    
     // Store position for the dragged node
     userPositionsRef.current.set(node.id, { x: node.position.x, y: node.position.y });
     
     // Also store positions for any selected nodes that moved together
-    nodes.forEach((n) => {
+    allNodes.forEach((n) => {
       if (n.selected) {
         userPositionsRef.current.set(n.id, { x: n.position.x, y: n.position.y });
       }
     });
   }, []);
 
-  // Sync nodes/edges when graph state changes
-  // KEY FIX: Preserve user-moved positions and only toggle hidden property
+  // Initial sync and updates when graph structure changes (not positions)
   useEffect(() => {
+    // Don't update during drag
+    if (isDraggingRef.current) return;
+
     setNodes((currentNodes) => {
-      // Build map of current node positions
       const currentPosMap = new Map(currentNodes.map(n => [n.id, n.position]));
       
       return graphNodes.map(graphNode => {
@@ -101,7 +112,9 @@ const RepositoryGraphInner = () => {
         };
       });
     });
+    
     setEdges(graphEdges);
+    initializedRef.current = true;
   }, [graphNodes, graphEdges, setNodes, setEdges]);
 
   const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
@@ -194,6 +207,7 @@ const RepositoryGraphInner = () => {
         onNodeClick={handleNodeClick}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
+        onNodeDragStart={handleNodeDragStart}
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
