@@ -452,14 +452,10 @@ const [state, setState] = useState<GraphState>({
     return [...containsEdges, ...importEdges];
   }, [state, generateNodes]);
 
-  // Memoize nodes and edges to prevent constant regeneration
-  const nodes = useMemo(() => generateNodes(), [generateNodes]);
-  const edges = useMemo(() => generateEdges(), [generateEdges]);
-
   return {
     state,
-    nodes,
-    edges,
+    nodes: generateNodes(),
+    edges: generateEdges(),
     actions: {
       setViewMode,
       toggleFolder,
