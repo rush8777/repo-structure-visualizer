@@ -68,57 +68,19 @@ const RepositoryGraphInner = () => {
 
   // Store user-modified positions persistently
   const userPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const onNodeDragStartPos = useRef<{id: string, x: number, y: number} | null>(null);
 
-  const handleNodeDragStart = useCallback((_: React.MouseEvent, node: Node) => {
-    onNodeDragStartPos.current = { id: node.id, x: node.position.x, y: node.position.y };
-  }, []);
-
-  // When dragging ends, store the final position
-  const handleNodeDragStop = useCallback((_: React.MouseEvent, node: Node) => {
+  // When dragging ends, store final positions for all dragged nodes
+  const handleNodeDragStop = useCallback((_: React.MouseEvent, node: Node, nodes: Node[]) => {
+    // Store position for the dragged node
     userPositionsRef.current.set(node.id, { x: node.position.x, y: node.position.y });
+    
+    // Also store positions for any selected nodes that moved together
+    nodes.forEach((n) => {
+      if (n.selected) {
+        userPositionsRef.current.set(n.id, { x: n.position.x, y: n.position.y });
+      }
+    });
   }, []);
-
-  const handleNodeDrag = useCallback((_: React.MouseEvent, node: Node) => {
-    if (!onNodeDragStartPos.current || onNodeDragStartPos.current.id !== node.id) return;
-
-    const dx = node.position.x - onNodeDragStartPos.current.x;
-    const dy = node.position.y - onNodeDragStartPos.current.y;
-
-    if (dx === 0 && dy === 0) return;
-
-    // Recursive function to find all descendants
-    const getDescendants = (parentId: string): string[] => {
-      const children = edges
-        .filter((e) => e.source === parentId && e.data?.label === 'CONTAINS')
-        .map((e) => e.target);
-      return [...children, ...children.flatMap(getDescendants)];
-    };
-
-    const descendants = getDescendants(node.id);
-
-    if (descendants.length > 0) {
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (descendants.includes(n.id)) {
-            const newPos = {
-              x: n.position.x + dx,
-              y: n.position.y + dy,
-            };
-            // Also store in persistent ref
-            userPositionsRef.current.set(n.id, newPos);
-            return {
-              ...n,
-              position: newPos,
-            };
-          }
-          return n;
-        })
-      );
-    }
-
-    onNodeDragStartPos.current = { id: node.id, x: node.position.x, y: node.position.y };
-  }, [edges, setNodes]);
 
   // Sync nodes/edges when graph state changes
   // KEY FIX: Preserve user-moved positions and only toggle hidden property
@@ -232,8 +194,6 @@ const RepositoryGraphInner = () => {
         onNodeClick={handleNodeClick}
         onNodeMouseEnter={handleNodeMouseEnter}
         onNodeMouseLeave={handleNodeMouseLeave}
-        onNodeDragStart={handleNodeDragStart}
-        onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         onPaneClick={handlePaneClick}
         nodeTypes={nodeTypes}
